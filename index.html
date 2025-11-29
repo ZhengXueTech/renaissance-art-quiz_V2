@@ -330,6 +330,66 @@
         .explanation-content {
             text-indent: 2em;
         }
+        
+        /* === 待機外掛 CSS 樣式區域 (整合自前一輪) === */
+
+        /* 隱藏/顯示圖片外掛的樣式 */
+        #idle-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20000; /* 確保它在最高層 */
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        /* 初始隱藏狀態 */
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* 顯示狀態 */
+        .visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* 圖片和文字的容器 - 讓它佔滿整個視窗 */
+        .overlay-content {
+            text-align: center;
+            color: white;
+            width: 95%; 
+            height: 95%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 圖片樣式 - 強制填滿容器 */
+        #idle-image {
+            width: 100%;   /* 寬度佔滿父容器 */
+            height: 100%;  /* 高度佔滿父容器 */
+            border: 8px solid gold;
+            box-shadow: 0 0 40px rgba(255, 215, 0, 1);
+            object-fit: cover; /* 強制圖片填滿，可能裁剪 */
+            flex-grow: 1; 
+        }
+
+        /* 提示文字 */
+        .overlay-content p {
+            flex-shrink: 0; 
+            margin-top: 20px;
+            font-size: 1.8em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px black;
+        }
     </style>
 </head>
 <body>
@@ -358,8 +418,7 @@
             <div class="question">這幅畫是哪位畫家的作品？</div>
             
             <div class="options" id="options">
-                <!-- 選項會動態生成 -->
-            </div>
+                </div>
             
             <div id="explanation" class="explanation" style="display: none;">
                 <h4>📚 作品介紹</h4>
@@ -375,7 +434,10 @@
                 <p>您的最終分數：<span id="final-score">0</span> / 100</p>
                 <div id="grade"></div>
             </div>
-            
+
+            <div id="celebration-animation" style="display: none; margin: 20px auto; max-width: 400px; text-align: center;">
+                <img id="celebration-gif" src="image/end.gif" alt="慶祝動畫" style="width: 100%; border-radius: 10px; border: 5px solid gold;">
+            </div>
             <div id="name-input-section" class="name-input-container" style="display: none;">
                 <p style="color: #8B4513; font-weight: bold; margin-bottom: 15px;">
                     🎉 恭喜！您的分數進入前十名！
@@ -407,7 +469,13 @@
             <button class="start-btn" onclick="backToMenu()">回到主選單</button>
         </div>
     </div>
-
+    
+    <div id="idle-overlay" class="hidden">
+        <div class="overlay-content">
+            <img id="idle-image" src="image/end.gif" alt="待機畫面">
+            <p>偵測到 10 秒無操作，請點擊任意處繼續。</p>
+        </div>
+    </div>
     <script>
         // 文藝復興畫作資料庫
         const paintings = [
@@ -594,7 +662,7 @@
         let answered = false;
         let playerName = '';
 
-        // 排行榜管理
+        // 排行榜管理類別 (未變動)
         class LeaderboardManager {
             constructor() {
                 this.storageKey = 'renaissanceQuizLeaderboard';
@@ -796,6 +864,13 @@
             document.getElementById('explanation').style.display = 'none';
             document.getElementById('next-btn').style.display = 'none';
         }
+        
+        // ** 【已補回】下一題函數 **
+        function nextQuestion() {
+            currentQuestionIndex++;
+            loadQuestion();
+        }
+        // *************************
 
         function selectAnswer(selectedOption, correctAnswer) {
             if (answered) return;
@@ -835,15 +910,15 @@
             }, 1500);
         }
 
-        function nextQuestion() {
-            currentQuestionIndex++;
-            loadQuestion();
-        }
-
         function showResults() {
             document.getElementById('game-screen').style.display = 'none';
             document.getElementById('result-screen').style.display = 'block';
             document.getElementById('final-score').textContent = score;
+            
+            // 1. 初始化，隱藏所有結果區塊，準備顯示成績和 GIF
+            document.getElementById('name-input-section').style.display = 'none';
+            document.getElementById('result-buttons').style.display = 'none';
+            document.getElementById('leaderboard-section').style.display = 'none'; 
             
             const gradeElement = document.getElementById('grade');
             let grade = '';
@@ -867,16 +942,26 @@
             }
             
             gradeElement.innerHTML = `<h3>${emoji} ${grade} ${emoji}</h3>`;
+
+            // ****** 【GIF 播放邏輯】 ******
+            const gifContainer = document.getElementById('celebration-animation');
             
-            // 檢查是否進入排行榜
-            if (leaderboard.isTopScore(score)) {
-                document.getElementById('name-input-section').style.display = 'block';
-                document.getElementById('result-buttons').style.display = 'none';
-                document.getElementById('player-name').focus();
-            } else {
-                document.getElementById('name-input-section').style.display = 'none';
-                document.getElementById('result-buttons').style.display = 'block';
-            }
+            // 顯示 GIF 容器
+            gifContainer.style.display = 'block';
+
+            // 設定 10 秒後隱藏 GIF 並顯示排行榜/輸入區塊
+            setTimeout(() => {
+                gifContainer.style.display = 'none'; // 隱藏 GIF 
+                
+                // 檢查是否進入排行榜的邏輯，在 GIF 播放結束後執行
+                if (leaderboard.isTopScore(score)) {
+                    document.getElementById('name-input-section').style.display = 'block';
+                    document.getElementById('player-name').focus();
+                } else {
+                    document.getElementById('result-buttons').style.display = 'block';
+                }
+            }, 10000); // 10000 毫秒 = 10 秒
+            // ******************************
         }
 
         function submitScore() {
@@ -965,6 +1050,106 @@
                 });
             });
         });
+
+        /* === 待機外掛 JavaScript 邏輯區域 (已整合) === */
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // 設置待機時間為 10 秒 (10 * 1000 毫秒)
+            const IDLE_TIMEOUT = 10000;
+
+            // 獲取圖片外掛元素
+            const idleOverlay = document.getElementById('idle-overlay');
+
+            let idleTimer; // 用於儲存計時器的變數
+
+            /**
+             * 重設計時器：清除舊的計時器，並設定一個新的計時器。
+             * 只有當遊戲畫面(game-screen)沒有顯示時，才計時。
+             */
+            function resetTimer() {
+                // 檢查是否處於遊戲進行中 (game-screen顯示)
+                const isGameActive = document.getElementById('game-screen').style.display === 'block';
+
+                clearTimeout(idleTimer);
+                hideOverlay();
+
+                // 只有當遊戲不活動 (在主畫面、排行榜、結果畫面) 時才開始計時
+                if (!isGameActive) {
+                    idleTimer = setTimeout(showOverlay, IDLE_TIMEOUT);
+                }
+            }
+
+            /**
+             * 顯示待機圖片外掛。
+             */
+            function showOverlay() {
+                // 確保它在顯示時是可見的
+                idleOverlay.classList.remove('hidden');
+                idleOverlay.classList.add('visible');
+            }
+
+            /**
+             * 隱藏待機圖片外掛。
+             */
+            function hideOverlay() {
+                // 確保它在隱藏時是不可見且無法被點擊的
+                idleOverlay.classList.remove('visible');
+                idleOverlay.classList.add('hidden');
+            }
+
+            // --- 監聽事件 ---
+
+            // 1. 監聽所有可能會被用戶操作的事件 (滑鼠/鍵盤/觸摸)
+            const interactionEvents = [
+                'mousemove',  // 滑鼠移動
+                'mousedown',  // 滑鼠按下
+                'keypress',   // 鍵盤輸入
+                'scroll',     // 滾動頁面
+                'touchstart'  // 觸摸螢幕
+            ];
+
+            // 將重設計時器的功能綁定到這些事件上
+            interactionEvents.forEach(event => {
+                document.addEventListener(event, resetTimer, true); 
+            });
+
+            // 2. 點擊圖片外掛本身也會隱藏它並重設計時器
+            idleOverlay.addEventListener('click', () => {
+                hideOverlay();
+                resetTimer();
+            });
+
+            // 3. 頁面載入後，立即啟動計時器
+            resetTimer();
+
+            // 4. 重寫您的遊戲控制函數，以便在切換畫面前後重設計時器
+            
+            const originalStartGame = startGame;
+            startGame = () => {
+                originalStartGame();
+                resetTimer(); // 遊戲開始，停止待機計時器 (因為resetTimer會檢查isGameActive)
+            }
+
+            const originalShowLeaderboard = showLeaderboard;
+            showLeaderboard = () => {
+                originalShowLeaderboard();
+                resetTimer(); // 進入排行榜，啟動待機計時器
+            }
+
+            const originalBackToMenu = backToMenu;
+            backToMenu = () => {
+                originalBackToMenu();
+                resetTimer(); // 回到主選單，啟動待機計時器
+            }
+
+            // 在遊戲結果出來時，強制啟動待機計時器 (因為 result-screen 也不是 game-screen)
+            const originalShowResults = showResults;
+            showResults = () => {
+                originalShowResults();
+                resetTimer(); 
+            }
+        });
+        /* ======================================= */
     </script>
 </body>
 </html>
